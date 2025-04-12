@@ -1,0 +1,103 @@
+Docker Compose que combina Zurg, RClone y Plex para ejecutar en un VM o Bare Metal
+
+RClone tiene los comandos y ruta para poner los archivos cache en RAM y no en SSD.
+
+Con este se evita que no impacte en la vida util del SSD.
+
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+Antes de hacer Docker Compose up -d realizar los siguientes pasos:
+
+1. En tu host (donde está corriendo Docker), agregá esto al /etc/fstab:
+
+tmpfs /dev/shm/rclone-cache tmpfs defaults,size=1G 0 0
+
+2. Crea el directorio:
+
+mkdir -p /dev/shm/rclone-cache
+
+Esto le da hasta 1 GB de RAM para cache de rclone, más que suficiente para buffering temporal sin escribir al disco.
+
+Resumen de beneficios de esta config:
+
+    - Sin escrituras masivas al disco
+
+    - 4K direct play fluido (Infuse/Kodi usa HTTP streaming eficiente)
+
+    - RAM como cache para performance
+
+    - Configuración ligera y sin desgaste de SSD
+
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+services:
+  zurg:
+    image: ghcr.io/debridmediamanager/zurg-testing:latest
+    container_name: zurg
+    restart: unless-stopped
+    ports:
+      - 9999:9999
+    volumes:
+      - ./scripts/plex_update.sh:/app/plex_update.sh
+      - ./config.yml:/app/config.yml
+      - zurgdata:/app/data
+
+  rclone:
+    image: rclone/rclone:latest
+    container_name: rclone
+    restart: unless-stopped
+    environment:
+      TZ: America/Panama
+      PUID: 1000
+      PGID: 1000
+    volumes:
+      - /mnt/zurg:/data:rshared
+      - ./rclone.conf:/config/rclone/rclone.conf
+      - /dev/shm/rclone-cache:/tmp/rclone-cache  # cache en RAM
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    devices:
+      - /dev/fuse:/dev/fuse:rwm
+    depends_on:
+      - zurg
+    command: >
+      mount zurg: /data
+      --allow-other
+      --allow-non-empty
+      --dir-cache-time 10s
+      --vfs-cache-mode minimal
+      --cache-dir /tmp/rclone-cache
+
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    container_name: plex
+    network_mode: host
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Panama
+      - VERSION=docker
+      - PLEX_CLAIM= #optional
+    volumes:
+      - /root/plex/library:/config
+      - /mnt/zurg/shows:/tv
+      - /mnt/zurg/movies:/movies
+      - /mnt/zurg/anime:/anime
+    restart: unless-stopped
+    depends_on:
+      - zurg
+      - rclone
+
+volumes:
+  zurgdata:
+
+
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+Opcional:
+
+Si usas una VM lo recomendable es 8GN de RAM, ya que Linux tiene una forma de usar la RAM en Caché para optimizar, sin embargo no la libera de inmediato.
+
+Para "solucionar" esto, podrías hacer muchas cosas, pero te dejo una en la que cree un cron que reinicia los contenedores una vez al día.
