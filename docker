@@ -98,6 +98,16 @@ volumes:
 
 Opcional:
 
-Si usas una VM lo recomendable es 8GN de RAM, ya que Linux tiene una forma de usar la RAM en Caché para optimizar, sin embargo no la libera de inmediato.
+Si usas una VM lo recomendable es 8GB de RAM, ya que Linux tiene una forma de usar toda la RAM en Caché para optimizar, sin embargo no la libera de inmediato.
 
-Para "solucionar" esto, podrías hacer muchas cosas, pero te dejo una en la que cree un cron que reinicia los contenedores una vez al día.
+Para "solucionar" esto, podrías hacer muchas cosas, pero te dejo una en la que creas un cron que reinicia los contenedores una vez al día.
+
+1. Edita el crontab del usuario root:
+
+crontab -e
+
+2. Agrega esta línea:
+
+0 2 * * * cd /root/zurg-testing && docker compose down && docker compose up -d
+
+Asegúrate de que el archivo docker-compose esté disponible en el entorno de cron (a veces necesitas usar la ruta completa, como /usr/bin/docker compose).
